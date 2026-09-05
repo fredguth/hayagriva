@@ -273,9 +273,9 @@ impl<T: EntryLike + Hash + PartialEq + Eq + Debug> BibliographyDriver<'_, T> {
 
         // 3. Group adjacent citations.
         for cite in res.iter_mut() {
-            // This map contains the last index of each entry with this names
-            // elem.
-            let mut map: HashMap<String, usize> = HashMap::new();
+            // This map contains, for each names elem, the index of the last
+            // item of its group and the group's number.
+            let mut map: HashMap<String, (usize, usize)> = HashMap::new();
             let mut group_idx = 0;
 
             for i in 0..cite.items.len() {
@@ -305,29 +305,34 @@ impl<T: EntryLike + Hash + PartialEq + Eq + Debug> BibliographyDriver<'_, T> {
                     continue;
                 };
 
-                let mut prev = None;
-                let target = *map
-                    .entry(name_elem)
-                    .and_modify(|i| {
-                        prev = Some(*i);
-                        *i += 1
-                    })
-                    .or_insert_with(|| {
-                        group_idx += 1;
-                        i
-                    });
+                let Some(&(last, group)) = map.get(&name_elem) else {
+                    // The first cite of a group keeps the layout delimiter: the
+                    // group delimiter only separates cites _within_ a group.
+                    group_idx += 1;
+                    map.insert(name_elem, (i, group_idx));
+                    cite.items[i].group_idx = Some(group_idx);
+                    continue;
+                };
 
+                // Move the item up so that it directly follows the rest of its
+                // group.
+                let target = last + 1;
                 let mut pos = i;
                 while target < pos {
                     cite.items.swap(pos, pos - 1);
                     pos -= 1;
                 }
 
-                cite.items[target].delim_override = Some(delim);
-                cite.items[target].group_idx = Some(group_idx);
-                if let Some(prev) = prev {
-                    cite.items[prev].delim_override = None;
+                // The items in `target..i` all moved one position to the back.
+                for (idx, _) in map.values_mut() {
+                    if (target..i).contains(idx) {
+                        *idx += 1;
+                    }
                 }
+                map.insert(name_elem, (target, group));
+
+                cite.items[target].delim_override = Some(delim);
+                cite.items[target].group_idx = Some(group);
             }
         }
 
@@ -904,7 +909,14 @@ fn collapse_items<'a, T: EntryLike>(cite: &mut SpeculativeCiteRender<'a, '_, T>)
         .as_deref()
         .or(style.citation.layout.delimiter.as_deref());
 
-    let group_delimiter = style.citation.cite_group_delimiter.as_deref();
+    // The CSL specification gives `cite-group-delimiter` a default of ", ", but
+    // that default only takes effect for styles that sort their citations (see
+    // https://github.com/citation-style-language/test-suite/issues/36).
+    let group_delimiter = style
+        .citation
+        .cite_group_delimiter
+        .as_deref()
+        .or_else(|| style.citation.sort.as_ref().map(|_| ", "));
     let year_suffix_delimiter = style.citation.year_suffix_delimiter.as_deref();
 
     match style.citation.collapse {
