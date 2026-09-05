@@ -1,0 +1,142 @@
+>>===== MODE =====>>
+citation
+<<===== MODE =====<<
+
+
+>>===== RESULT =====>>
+(Doe 1998; Jones 1999; Smith 2000, 2001; Wilson 2002)
+<<===== RESULT =====<<
+
+
+>>===== CSL =====>>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info>
+    <id />
+    <title />
+    <updated>2009-08-10T04:49:00+09:00</updated>
+  </info>
+  <macro name="author-short">
+    <names variable="author">
+      <name form="short" />
+    </names>
+  </macro>
+  <macro name="issued">
+    <date variable="issued">
+      <date-part name="year" />
+    </date>
+  </macro>
+  <citation collapse="year" cite-group-delimiter=", ">
+    <sort>
+      <key macro="author-short" />
+      <key macro="issued" />
+    </sort>
+    <layout prefix="(" suffix=")" delimiter="; ">
+      <group delimiter=" ">
+        <text macro="author-short" />
+        <text macro="issued" />
+      </group>
+    </layout>
+  </citation>
+</style>
+<<===== CSL =====<<
+
+
+>>===== INPUT =====>>
+[
+    {
+        "author": [
+            {
+                "family": "Doe",
+                "given": "John"
+            }
+        ],
+        "id": "ITEM-1",
+        "issued": {
+            "date-parts": [
+                [
+                    1998
+                ]
+            ]
+        },
+        "title": "Title 1",
+        "type": "book"
+    },
+    {
+        "author": [
+            {
+                "family": "Jones",
+                "given": "John"
+            }
+        ],
+        "id": "ITEM-2",
+        "issued": {
+            "date-parts": [
+                [
+                    1999
+                ]
+            ]
+        },
+        "title": "Title 2",
+        "type": "book"
+    },
+    {
+        "author": [
+            {
+                "family": "Smith",
+                "given": "John"
+            }
+        ],
+        "id": "ITEM-3",
+        "issued": {
+            "date-parts": [
+                [
+                    2000
+                ]
+            ]
+        },
+        "title": "Title 3",
+        "type": "book"
+    },
+    {
+        "author": [
+            {
+                "family": "Smith",
+                "given": "John"
+            }
+        ],
+        "id": "ITEM-4",
+        "issued": {
+            "date-parts": [
+                [
+                    2001
+                ]
+            ]
+        },
+        "title": "Title 4",
+        "type": "book"
+    },
+    {
+        "author": [
+            {
+                "family": "Wilson",
+                "given": "John"
+            }
+        ],
+        "id": "ITEM-5",
+        "issued": {
+            "date-parts": [
+                [
+                    2002
+                ]
+            ]
+        },
+        "title": "Title 5",
+        "type": "book"
+    }
+]
+<<===== INPUT =====<<
+
+
+>>===== VERSION =====>>
+1.0
+<<===== VERSION =====<<
