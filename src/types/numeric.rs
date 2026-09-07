@@ -246,8 +246,11 @@ impl FromStr for Numeric {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let mut s = Scanner::new(value);
-        let prefix =
-            s.eat_while(|c: char| !c.is_numeric() && !c.is_whitespace() && c != '-');
+        s.eat_whitespace();
+        // The whitespace between the prefix and the number belongs to the
+        // prefix: `seção 1` and `viii, 236` must not come back out as
+        // `seção1` and `viii,236`.
+        let prefix = s.eat_while(|c: char| !c.is_numeric() && c != '-');
 
         let value = number(&mut s).ok_or(NumericError::NoNumber)?;
         s.eat_whitespace();
