@@ -738,16 +738,20 @@ impl Entry {
         match &self.entry_type {
             EntryType::Article => retrieve_container(&[
                 EntryType::Book,
-                // Proceedings must come before Conference.
-                // Because @inproceedings will result in a Article entry with a Proceedings and a
-                // Conference parent. But only the Proceedings has the correct title.
                 EntryType::Proceedings,
-                EntryType::Conference,
                 EntryType::Periodical,
                 EntryType::Newspaper,
                 EntryType::Blog,
                 EntryType::Reference,
                 EntryType::Web,
+                // Conference comes LAST because it is an event, not a
+                // container: it only stands in as one when the entry has no
+                // real container beside it. `@inproceedings` yields an Article
+                // with both a Proceedings and a Conference parent, and only the
+                // Proceedings carries the container's title; an event published
+                // in a journal yields a Periodical and a Conference, and there
+                // the Periodical is the container.
+                EntryType::Conference,
             ]),
             EntryType::Anthos => retrieve_container(&[
                 EntryType::Book,
