@@ -1,0 +1,92 @@
+>>===== MODE =====>>
+bibliography
+<<===== MODE =====<<
+
+
+>>===== DESCRIPTION =====>>
+A date range rendered by date-parts that carry their own affixes instead of a
+delimiter on cs:date (the pattern of the ABNT NBR 6023 styles: "maio/ago.
+1989"). The suffix of the start's last differing part and the prefix of the
+end's first differing part make way for the range delimiter; every other
+affix stays. A range whose only difference is in a part the style does not
+print is one date. The delimiter is the one of the largest differing part:
+a range across months takes the month's "/" even when the days differ too.
+<<===== DESCRIPTION =====<<
+
+
+>>===== RESULT =====>>
+<div class="csl-bib-body">
+  <div class="csl-entry">May/August 1989</div>
+  <div class="csl-entry">May 2000</div>
+  <div class="csl-entry">3 May/5 August 2000</div>
+  <div class="csl-entry">1973-1992</div>
+</div>
+<<===== RESULT =====<<
+
+
+>>===== INPUT =====>>
+[
+    {
+        "id": "months",
+        "type": "article-journal",
+        "issued": { "date-parts": [[1989, 5], [1989, 8]] }
+    },
+    {
+        "id": "same-month",
+        "type": "article-journal",
+        "issued": { "date-parts": [[2000, 5, 3], [2000, 5, 5]] }
+    },
+    {
+        "id": "days",
+        "type": "book",
+        "issued": { "date-parts": [[2000, 5, 3], [2000, 8, 5]] }
+    },
+    {
+        "id": "years",
+        "type": "chapter",
+        "issued": { "date-parts": [[1973], [1992]] }
+    }
+]
+<<===== INPUT =====<<
+
+
+>>===== CSL =====>>
+<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info>
+    <id />
+    <title />
+    <updated>2026-09-07T00:00:00+00:00</updated>
+  </info>
+  <citation>
+    <layout>
+      <text value="bogus"/>
+    </layout>
+  </citation>
+  <bibliography>
+    <layout>
+      <choose>
+        <if type="article-journal">
+          <date variable="issued" date-parts="year-month">
+            <date-part name="day" suffix=" "/>
+            <date-part name="month" form="long" suffix=" " range-delimiter="/"/>
+            <date-part name="year" range-delimiter="-"/>
+          </date>
+        </if>
+        <else-if type="book">
+          <date variable="issued">
+            <date-part name="day" suffix=" "/>
+            <date-part name="month" form="long" suffix=" " range-delimiter="/"/>
+            <date-part name="year" range-delimiter="-"/>
+          </date>
+        </else-if>
+        <else>
+          <date variable="issued">
+            <date-part name="year" range-delimiter="-"/>
+          </date>
+        </else>
+      </choose>
+    </layout>
+  </bibliography>
+</style>
+<<===== CSL =====<<

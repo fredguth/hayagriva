@@ -769,17 +769,21 @@ impl EntryLike for citationberg::json::Item {
                 let Ok(d) = csl_json::FixedDateRange::try_from(d.clone()) else {
                     return None;
                 };
-                if d.end.is_some() {
-                    panic!("ranges are not supported")
-                }
-                let d = d.start;
-                Some(Cow::Owned(Date {
+                let fixed = |d: csl_json::FixedDate| Date {
                     year: d.year as i32,
                     month: d.month,
                     day: d.day,
                     approximate: d.circa,
                     season: d.season,
-                }))
+                    end: None,
+                };
+                let mut date = fixed(d.start);
+                // An end year of zero is how CSL JSON marks an OPEN range
+                // ("1987–"), not the year 1 B.C.E. Open ranges have no
+                // representation here yet, so the end is dropped and only the
+                // start is rendered — better than printing `1 B.C.` as the end.
+                date.end = d.end.filter(|e| e.year != 0).map(|e| fixed(e).into());
+                Some(Cow::Owned(date))
             }
             _ => None,
         }

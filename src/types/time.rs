@@ -24,6 +24,51 @@ pub struct Date {
     pub approximate: bool,
     /// The season. Between 1 and 4 (inclusive).
     pub season: Option<Season>,
+    /// The end of a date range. When set, the fields above describe the
+    /// start. Written as `start/end` (ISO 8601 time interval notation), e.g.
+    /// `1989-05/1989-08`.
+    pub end: Option<DateEnd>,
+}
+
+/// The end of a date range. See [`Date::end`].
+///
+/// A separate type, and not a nested [`Date`], so that `Date` stays `Copy` and
+/// a range cannot nest another range.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DateEnd {
+    /// The year (1 B.C.E. is represented as 0 and so forth).
+    pub year: i32,
+    /// The optional month (0-11).
+    pub month: Option<u8>,
+    /// The optional day (0-30).
+    pub day: Option<u8>,
+    /// The season. Between 1 and 4 (inclusive).
+    pub season: Option<Season>,
+}
+
+impl From<Date> for DateEnd {
+    fn from(date: Date) -> Self {
+        Self {
+            year: date.year,
+            month: date.month,
+            day: date.day,
+            season: date.season,
+        }
+    }
+}
+
+impl Date {
+    /// The end of the range as a date of its own, if this is a range.
+    pub fn end_date(&self) -> Option<Date> {
+        self.end.map(|end| Date {
+            year: end.year,
+            month: end.month,
+            day: end.day,
+            approximate: self.approximate,
+            season: end.season,
+            end: None,
+        })
+    }
 }
 
 impl<'de> Deserialize<'de> for Date {
@@ -72,6 +117,7 @@ impl<'de> Deserialize<'de> for Date {
                         season: inner
                             .season
                             .and_then(|v| Season::try_from_csl_number(v).ok()),
+                        end: None,
                     },
                 )
             }
@@ -178,8 +224,20 @@ pub enum DateError {
 impl FromStr for Date {
     type Err = DateError;
 
-    /// Parse a date from a string.
+    /// Parse a date from a string. A range is two dates separated by `/`.
     fn from_str(source: &str) -> Result<Self, Self::Err> {
+        if let Some((start, end)) = source.split_once('/') {
+            let mut start = Self::parse_single(start)?;
+            start.end = Some(Self::parse_single(end)?.into());
+            return Ok(start);
+        }
+        Self::parse_single(source)
+    }
+}
+
+impl Date {
+    /// Parse one date, without the range syntax.
+    fn parse_single(source: &str) -> Result<Self, DateError> {
         let mut s = Scanner::new(source);
         s.eat_whitespace();
         let approx = s.eat_if('~');
@@ -193,6 +251,7 @@ impl FromStr for Date {
                     day: Some(day),
                     approximate: approx,
                     season: None,
+                    end: None,
                 });
             }
             Err(DateError::UnknownFormat) => {
@@ -211,6 +270,7 @@ impl FromStr for Date {
                     day: None,
                     approximate: approx,
                     season: None,
+                    end: None,
                 });
             }
             Err(DateError::UnknownFormat) => {
@@ -233,6 +293,7 @@ impl FromStr for Date {
             day: None,
             approximate: approx,
             season: None,
+            end: None,
         })
     }
 }
@@ -246,6 +307,7 @@ impl Date {
             day: None,
             approximate: false,
             season: None,
+            end: None,
         }
     }
 
@@ -316,6 +378,10 @@ impl Display for Date {
             }
         }
 
+        if let Some(end) = self.end_date() {
+            write!(f, "/{end}")?;
+        }
+
         Ok(())
     }
 }
@@ -325,7 +391,7 @@ impl Serialize for Date {
     where
         S: serde::Serializer,
     {
-        if self.month.is_none() {
+        if self.month.is_none() && self.end.is_none() {
             serializer.serialize_i32(self.year)
         } else {
             serializer.serialize_str(&self.to_string())
@@ -704,6 +770,44 @@ fn days_in_month(month: u8, year: i32) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_date_range_parse() {
+        let range = Date::from_str("1989-05/1989-08").unwrap();
+        assert_eq!(range.year, 1989);
+        assert_eq!(range.month, Some(4));
+        assert_eq!(range.day, None);
+        let end = range.end.unwrap();
+        assert_eq!(end.year, 1989);
+        assert_eq!(end.month, Some(7));
+        assert_eq!(range.to_string(), "1989-05/1989-08");
+
+        let years = Date::from_str("1973/1992").unwrap();
+        assert_eq!((years.year, years.end.unwrap().year), (1973, 1992));
+        assert_eq!(years.to_string(), "1973/1992");
+
+        let days = Date::from_str("2000-01-02/2000-01-04").unwrap();
+        assert_eq!(days.day, Some(1));
+        assert_eq!(days.end.unwrap().day, Some(3));
+
+        assert!(Date::from_str("1989-05/").is_err());
+        assert!(Date::from_str("/1989-05").is_err());
+        assert!(Date::from_str("1989-05/1989-08/1989-09").is_err());
+        assert!(Date::from_str("1989-05").unwrap().end.is_none());
+    }
+
+    #[test]
+    fn test_date_range_yaml_round_trip() {
+        let range = Date::from_str("1989-05/1989-08").unwrap();
+        let yaml = yaml_serde::to_string(&range).unwrap();
+        assert_eq!(yaml.trim(), "1989-05/1989-08");
+        assert_eq!(yaml_serde::from_str::<Date>(&yaml).unwrap(), range);
+
+        let years = Date::from_str("1973/1992").unwrap();
+        let yaml = yaml_serde::to_string(&years).unwrap();
+        assert_eq!(yaml.trim(), "1973/1992");
+        assert_eq!(yaml_serde::from_str::<Date>(&yaml).unwrap(), years);
+    }
 
     #[test]
     fn test_duration_parse() {

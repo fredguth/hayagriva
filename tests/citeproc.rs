@@ -507,15 +507,6 @@ where
             })
         });
 
-    let contains_date_ranges = case
-        .input
-        .iter()
-        .flat_map(|i| i.0.values())
-        .filter_map(|v| if let csl_json::Value::Date(d) = v { Some(d) } else { None })
-        .any(|d| {
-            csl_json::FixedDateRange::try_from(d.clone()).is_ok_and(|d| d.end.is_some())
-        });
-
     if !can_test {
         if print {
             eprintln!("Skipping test {}\t(cause: unsupported test feature)", display());
@@ -527,11 +518,6 @@ where
                 "Skipping test {}\t(cause: HTML suspected in citation result)",
                 display()
             );
-        }
-        false
-    } else if contains_date_ranges {
-        if print {
-            eprintln!("Skipping test {}\t(cause: date ranges)", display());
         }
         false
     } else if case.input.iter().any(|i| i.has_html() || i.may_have_hack()) {
