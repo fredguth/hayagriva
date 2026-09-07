@@ -804,6 +804,18 @@ impl Entry {
             EntryType::Report => {
                 retrieve_container(&[EntryType::Book, EntryType::Anthology])
             }
+            // A statute is published in an official gazette — a newspaper or a
+            // periodical — and reprinted in collections of law. Without this
+            // arm a `Legislation` had no container at all, so the gazette's
+            // title and volume never reached the style.
+            EntryType::Legislation => retrieve_container(&[
+                EntryType::Newspaper,
+                EntryType::Periodical,
+                EntryType::Anthology,
+                EntryType::Book,
+                EntryType::Reference,
+                EntryType::Web,
+            ]),
             EntryType::Web => retrieve_container(&[EntryType::Web]),
             EntryType::Scene => retrieve_container(&[
                 EntryType::Audio,
