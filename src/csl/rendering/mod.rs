@@ -7,7 +7,7 @@ use citationberg::taxonomy::{
     StandardVariable, Term, Variable,
 };
 use citationberg::{
-    ChooseBranch, CslMacro, DateDayForm, DateMonthForm, DatePartName, DateParts,
+    Affixes, ChooseBranch, CslMacro, DateDayForm, DateMonthForm, DatePartName, DateParts,
     DateStrongAnyForm, GrammarGender, LabelPluralize, LayoutRenderingElement,
     LongShortForm, NumberForm, PageRangeFormat, TestPosition, TextCase, ToAffixes,
     ToFormatting,
@@ -680,7 +680,6 @@ impl RenderCsl for citationberg::Date {
 
         let parts = self.parts.or(base.and_then(|b| b.parts)).unwrap_or_default();
 
-        // TODO: Date ranges
         let mut last_was_empty = true;
 
         // Localized (base) delimiter takes precedence over the cs:date
@@ -698,13 +697,126 @@ impl RenderCsl for citationberg::Date {
             None => self.delimiter.as_deref(),
         };
 
-        for part in &base.unwrap_or(self).date_part {
-            match part.name {
-                DatePartName::Month if !parts.has_month() && date.season.is_none() => {
+        let visible = |name: DatePartName| match name {
+            DatePartName::Month => parts.has_month() || date.season.is_some(),
+            DatePartName::Day => parts.has_day(),
+            DatePartName::Year => true,
+        };
+
+        // Date ranges (CSL 1.0.2, "Date-part"): the range is rendered once,
+        // at the position of its largest differing date-part, as
+        // `start-parts range-delimiter end-parts`; the date-parts larger than
+        // that one are the same for both dates and are rendered once, in
+        // place. Only date-parts that would be rendered can make a range —
+        // two dates that differ only in a day the style does not print are
+        // one date to the reader.
+        let largest_diff = date.end.and_then(|end| {
+            if end.year != date.year {
+                Some(DatePartName::Year)
+            } else if visible(DatePartName::Month)
+                && (end.month != date.month || end.season != date.season)
+            {
+                Some(DatePartName::Month)
+            } else if visible(DatePartName::Day) && end.day != date.day {
+                Some(DatePartName::Day)
+            } else {
+                None
+            }
+        });
+        let size = |name: DatePartName| match name {
+            DatePartName::Day => 0,
+            DatePartName::Month => 1,
+            DatePartName::Year => 2,
+        };
+        let in_range =
+            |name: DatePartName| largest_diff.is_some_and(|l| size(name) <= size(l));
+
+        let effective = &base.unwrap_or(self).date_part;
+        let over_ride_for = |name: DatePartName| {
+            base.is_some()
+                .then(|| self.date_part.iter().find(|p| p.name == name))
+                .flatten()
+        };
+
+        let mut range_done = false;
+        for part in effective {
+            if !visible(part.name) {
+                continue;
+            }
+
+            if in_range(part.name) {
+                if range_done {
                     continue;
                 }
-                DatePartName::Day if !parts.has_day() => continue,
-                _ => {}
+                range_done = true;
+
+                let range_parts: Vec<_> = effective
+                    .iter()
+                    .filter(|p| visible(p.name) && in_range(p.name))
+                    .collect();
+                let end = date.end_date().expect("a range has an end");
+
+                // The start date, without the suffix of its last part: the
+                // range delimiter takes its place.
+                for (i, part) in range_parts.iter().enumerate() {
+                    let cursor = ctx.writing.len();
+                    if !last_was_empty && let Some(delim) = chosen_delim {
+                        ctx.push_str(delim);
+                    }
+                    let last = i + 1 == range_parts.len();
+                    let affixes = Affixes {
+                        prefix: part.affixes.prefix.clone(),
+                        suffix: if last { None } else { part.affixes.suffix.clone() },
+                    };
+                    render_date_part(
+                        part,
+                        &date,
+                        ctx,
+                        over_ride_for(part.name),
+                        first,
+                        &affixes,
+                    );
+                    last_was_empty = cursor == ctx.writing.len();
+                }
+
+                // The delimiter of the largest differing date-part, defaulting
+                // to an en dash.
+                let largest = largest_diff.expect("in_range implies a largest part");
+                let delimiter = over_ride_for(largest)
+                    .and_then(|p| p.range_delimiter.as_deref())
+                    .or_else(|| {
+                        effective
+                            .iter()
+                            .find(|p| p.name == largest)
+                            .and_then(|p| p.range_delimiter.as_deref())
+                    })
+                    .unwrap_or("\u{2013}");
+                ctx.push_str(delimiter);
+
+                // The end date, without the prefix of its first part.
+                for (i, part) in range_parts.iter().enumerate() {
+                    let cursor = ctx.writing.len();
+                    if i > 0
+                        && !last_was_empty
+                        && let Some(delim) = chosen_delim
+                    {
+                        ctx.push_str(delim);
+                    }
+                    let affixes = Affixes {
+                        prefix: if i == 0 { None } else { part.affixes.prefix.clone() },
+                        suffix: part.affixes.suffix.clone(),
+                    };
+                    render_date_part(
+                        part,
+                        &end,
+                        ctx,
+                        over_ride_for(part.name),
+                        false,
+                        &affixes,
+                    );
+                    last_was_empty = cursor == ctx.writing.len();
+                }
+                continue;
             }
 
             let cursor = ctx.writing.len();
@@ -712,12 +824,14 @@ impl RenderCsl for citationberg::Date {
                 ctx.push_str(delim);
             }
 
-            let over_ride = base
-                .is_some()
-                .then(|| self.date_part.iter().find(|p| p.name == part.name))
-                .flatten();
-
-            render_date_part(part, &date, ctx, over_ride, first);
+            render_date_part(
+                part,
+                &date,
+                ctx,
+                over_ride_for(part.name),
+                first,
+                &part.affixes,
+            );
             last_was_empty = cursor == ctx.writing.len();
         }
 
@@ -774,6 +888,7 @@ fn render_date_part<T: EntryLike>(
     ctx: &mut Context<T>,
     over_ride: Option<&citationberg::DatePart>,
     first: bool,
+    affixes: &Affixes,
 ) {
     let Some(val) = (match date_part.name {
         DatePartName::Day => date.day.map(|i| i as i32 + 1),
@@ -799,7 +914,6 @@ fn render_date_part<T: EntryLike>(
 
     let idx = ctx.push_format(formatting);
 
-    let affixes = &date_part.affixes;
     let affix_loc = (!is_only_suffix).then(|| ctx.apply_prefix(affixes));
     if date_part.name == DatePartName::Month {
         ctx.may_strip_periods(date_part.strip_periods);

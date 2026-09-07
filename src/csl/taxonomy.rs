@@ -754,17 +754,17 @@ impl EntryLike for citationberg::json::Item {
                 let Ok(d) = csl_json::FixedDateRange::try_from(d.clone()) else {
                     return None;
                 };
-                if d.end.is_some() {
-                    panic!("ranges are not supported")
-                }
-                let d = d.start;
-                Some(Cow::Owned(Date {
+                let fixed = |d: csl_json::FixedDate| Date {
                     year: d.year as i32,
                     month: d.month,
                     day: d.day,
                     approximate: false,
                     season: d.season,
-                }))
+                    end: None,
+                };
+                let mut date = fixed(d.start);
+                date.end = d.end.map(|e| fixed(e).into());
+                Some(Cow::Owned(date))
             }
             _ => None,
         }
