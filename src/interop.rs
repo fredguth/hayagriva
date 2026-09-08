@@ -75,12 +75,12 @@ impl From<tex::Date> for Date {
                 day: start.day,
                 approximate,
                 season: None,
-                end: Some(DateEnd {
+                end: Some(DateEnd::At(DateBound {
                     year: x.year,
                     month: x.month,
                     day: x.day,
                     season: None,
-                }),
+                })),
             },
         }
     }

@@ -779,10 +779,14 @@ impl EntryLike for citationberg::json::Item {
                 };
                 let mut date = fixed(d.start);
                 // An end year of zero is how CSL JSON marks an OPEN range
-                // ("1987–"), not the year 1 B.C.E. Open ranges have no
-                // representation here yet, so the end is dropped and only the
-                // start is rendered — better than printing `1 B.C.` as the end.
-                date.end = d.end.filter(|e| e.year != 0).map(|e| fixed(e).into());
+                // ("1987–"), not the year 1 B.C.E.
+                date.end = d.end.map(|e| {
+                    if e.year == 0 {
+                        crate::types::DateEnd::Open
+                    } else {
+                        fixed(e).into()
+                    }
+                });
                 Some(Cow::Owned(date))
             }
             _ => None,

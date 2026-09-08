@@ -26,7 +26,7 @@ pub struct Date {
     pub season: Option<Season>,
     /// The end of a date range. When set, the fields above describe the
     /// start. Written as `start/end` (ISO 8601 time interval notation), e.g.
-    /// `1989-05/1989-08`.
+    /// `1989-05/1989-08`, or `start/..` for a range that has not ended.
     pub end: Option<DateEnd>,
 }
 
@@ -35,7 +35,18 @@ pub struct Date {
 /// A separate type, and not a nested [`Date`], so that `Date` stays `Copy` and
 /// a range cannot nest another range.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DateEnd {
+pub enum DateEnd {
+    /// The range has a known end.
+    At(DateBound),
+    /// The range is OPEN: it has started and has not ended, like the run of a
+    /// journal that is still being published (`1965–`). Written `1965/..`
+    /// (EDTF); CSL JSON marks it with an end year of zero.
+    Open,
+}
+
+/// The date at which a closed range ends. See [`DateEnd::At`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DateBound {
     /// The year (1 B.C.E. is represented as 0 and so forth).
     pub year: i32,
     /// The optional month (0-11).
@@ -48,19 +59,30 @@ pub struct DateEnd {
 
 impl From<Date> for DateEnd {
     fn from(date: Date) -> Self {
-        Self {
+        Self::At(DateBound {
             year: date.year,
             month: date.month,
             day: date.day,
             season: date.season,
+        })
+    }
+}
+
+impl DateEnd {
+    /// The end date, if the range is closed.
+    pub fn bound(&self) -> Option<DateBound> {
+        match self {
+            Self::At(bound) => Some(*bound),
+            Self::Open => None,
         }
     }
 }
 
 impl Date {
-    /// The end of the range as a date of its own, if this is a range.
+    /// The end of the range as a date of its own, if this is a CLOSED range.
+    /// An open range has no end to render, and this returns `None` for it.
     pub fn end_date(&self) -> Option<Date> {
-        self.end.map(|end| Date {
+        self.end.and_then(|end| end.bound()).map(|end| Date {
             year: end.year,
             month: end.month,
             day: end.day,
@@ -228,7 +250,12 @@ impl FromStr for Date {
     fn from_str(source: &str) -> Result<Self, Self::Err> {
         if let Some((start, end)) = source.split_once('/') {
             let mut start = Self::parse_single(start)?;
-            start.end = Some(Self::parse_single(end)?.into());
+            // `..` is the EDTF notation for a range that has not ended.
+            start.end = Some(if end.trim() == ".." {
+                DateEnd::Open
+            } else {
+                Self::parse_single(end)?.into()
+            });
             return Ok(start);
         }
         Self::parse_single(source)
@@ -378,8 +405,13 @@ impl Display for Date {
             }
         }
 
-        if let Some(end) = self.end_date() {
-            write!(f, "/{end}")?;
+        match self.end {
+            Some(DateEnd::Open) => write!(f, "/..")?,
+            Some(DateEnd::At(_)) => {
+                let end = self.end_date().expect("a closed range has an end");
+                write!(f, "/{end}")?;
+            }
+            None => {}
         }
 
         Ok(())
@@ -777,18 +809,22 @@ mod tests {
         assert_eq!(range.year, 1989);
         assert_eq!(range.month, Some(4));
         assert_eq!(range.day, None);
-        let end = range.end.unwrap();
+        let end = range.end.unwrap().bound().unwrap();
         assert_eq!(end.year, 1989);
         assert_eq!(end.month, Some(7));
         assert_eq!(range.to_string(), "1989-05/1989-08");
 
         let years = Date::from_str("1973/1992").unwrap();
-        assert_eq!((years.year, years.end.unwrap().year), (1973, 1992));
+        assert_eq!((years.year, years.end.unwrap().bound().unwrap().year), (1973, 1992));
         assert_eq!(years.to_string(), "1973/1992");
 
         let days = Date::from_str("2000-01-02/2000-01-04").unwrap();
         assert_eq!(days.day, Some(1));
-        assert_eq!(days.end.unwrap().day, Some(3));
+        assert_eq!(days.end.unwrap().bound().unwrap().day, Some(3));
+
+        let open = Date::from_str("1965/..").unwrap();
+        assert_eq!((open.year, open.end), (1965, Some(DateEnd::Open)));
+        assert_eq!(open.to_string(), "1965/..");
 
         assert!(Date::from_str("1989-05/").is_err());
         assert!(Date::from_str("/1989-05").is_err());

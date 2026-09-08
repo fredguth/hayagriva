@@ -747,7 +747,12 @@ impl RenderCsl for citationberg::Date {
         // place. Only date-parts that would be rendered can make a range —
         // two dates that differ only in a day the style does not print are
         // one date to the reader.
+        // An OPEN range ("1965–") has no end to compare against: the range is
+        // carried by the largest date-part, the year, which is always visible.
         let largest_diff = date.end.and_then(|end| {
+            let Some(end) = end.bound() else {
+                return Some(DatePartName::Year);
+            };
             if end.year != date.year {
                 Some(DatePartName::Year)
             } else if visible(DatePartName::Month)
@@ -791,7 +796,6 @@ impl RenderCsl for citationberg::Date {
                     .iter()
                     .filter(|p| visible(p.name) && in_range(p.name))
                     .collect();
-                let end = date.end_date().expect("a range has an end");
 
                 // The start date, without the suffix of its last part: the
                 // range delimiter takes its place.
@@ -829,6 +833,13 @@ impl RenderCsl for citationberg::Date {
                     })
                     .unwrap_or("\u{2013}");
                 ctx.push_str(delimiter);
+
+                // An open range stops here: there is no end to render, and the
+                // delimiter is the last thing the reader sees ("1965–").
+                let Some(end) = date.end_date() else {
+                    last_was_empty = false;
+                    continue;
+                };
 
                 // The end date, without the prefix of its first part.
                 for (i, part) in range_parts.iter().enumerate() {
