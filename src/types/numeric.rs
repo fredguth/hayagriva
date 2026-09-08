@@ -253,7 +253,7 @@ impl FromStr for Numeric {
         let prefix = s.eat_while(|c: char| !c.is_numeric() && c != '-');
 
         let value = number(&mut s).ok_or(NumericError::NoNumber)?;
-        s.eat_whitespace();
+        let space_after_value = s.eat_whitespace();
 
         let value = match s.peek() {
             Some(c) if is_delimiter(c) => {
@@ -279,7 +279,15 @@ impl FromStr for Numeric {
             _ => NumericValue::Number(value),
         };
         s.eat_whitespace();
-        let post = s.eat_while(|c: char| !c.is_whitespace());
+        // The postfix stops at the first DIGIT, not only at whitespace. Without
+        // this, `Version 1.0A` parsed as the number 1 with the prefix
+        // `Version ` and the postfix `.0A` — that is, it was NUMERIC — and the
+        // CSL `is-numeric` test said so. The ABNT style asks that test to
+        // decide whether an edition takes the "ed." term (NBR 6023:2025 8.3.2
+        // wants a non-numeric version transcribed and nothing else), so the
+        // reference came out `Version 1.0A. ed.`. Stopping at the digit leaves
+        // `0A` unconsumed, and the entry is correctly rejected as non-numeric.
+        let post = s.eat_while(|c: char| !c.is_numeric() && !c.is_whitespace());
 
         if !s.after().is_empty() {
             return Err(NumericError::UnexpectedCharactersAfterPostfix);
@@ -292,7 +300,13 @@ impl FromStr for Numeric {
             } else {
                 Some(Box::new(prefix.to_string()))
             },
-            suffix: if post.is_empty() { None } else { Some(Box::new(post.to_string())) },
+            // The whitespace between the number and its postfix belongs to the
+            // postfix, for the same reason it belongs to the prefix above.
+            suffix: if post.is_empty() {
+                None
+            } else {
+                Some(Box::new(format!("{space_after_value}{post}")))
+            },
         })
     }
 }
